@@ -2,6 +2,7 @@ import datetime
 
 import numpy as np
 import pandas as pd
+from zipline.errors import NoFurtherDataError
 from zipline.pipeline.common import TS_FIELD_NAME, SID_FIELD_NAME
 from zipline.utils.numpy_utils import categorical_dtype
 from zipline.utils.pandas_utils import mask_between_time
@@ -405,3 +406,48 @@ def ffill_across_cols(df, columns, name_map):
             df[column_name] = df[
                 column_name
             ].fillna(column.missing_value).astype(column.dtype)
+
+
+def shift_dates(dates, start_date, end_date, shift):
+    try:
+        start = dates.get_loc(start_date)
+    except KeyError:
+        if start_date < dates[0]:
+            raise NoFurtherDataError(
+                msg=(
+                    "Pipeline Query requested data starting on {query_start}, "
+                    "but first known date is {calendar_start}"
+                ).format(
+                    query_start=str(start_date),
+                    calendar_start=str(dates[0]),
+                )
+            )
+        else:
+            raise ValueError("Query start %s not in calendar" % start_date)
+
+    # Make sure that shifting doesn't push us out of the calendar.
+    if start < shift:
+        raise NoFurtherDataError(
+            msg=(
+                "Pipeline Query requested data from {shift}"
+                " days before {query_start}, but first known date is only "
+                "{start} days earlier."
+            ).format(shift=shift, query_start=start_date, start=start),
+        )
+
+    try:
+        end = dates.get_loc(end_date)
+    except KeyError:
+        if end_date > dates[-1]:
+            raise NoFurtherDataError(
+                msg=(
+                    "Pipeline Query requesting data up to {query_end}, "
+                    "but last known date is {calendar_end}"
+                ).format(
+                    query_end=end_date,
+                    calendar_end=dates[-1],
+                )
+            )
+        else:
+            raise ValueError("Query end %s not in calendar" % end_date)
+    return dates[start - shift], dates[end - shift]
